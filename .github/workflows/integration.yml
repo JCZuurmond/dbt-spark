@@ -1,0 +1,75 @@
+# **what?**
+# Runs integration tests.
+
+# **why?**
+# Ensure code runs as expected.
+
+# **when?**
+# This will run for all PRs, when code is pushed to a release
+# branch, and when manually triggered.
+
+name: Integration tests
+
+on:
+  push:
+    branches:
+      - "main"
+      - "*.latest"
+      - "releases/*"
+  pull_request:
+  workflow_dispatch:
+
+# explicitly turn off permissions for `GITHUB_TOKEN`
+permissions: read-all
+
+# will cancel previous workflows triggered by the same event and for the same ref for PRs or same SHA otherwise
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ contains(github.event_name, 'pull_request') && github.event.pull_request.head.ref || github.sha }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  tests:
+    name: test with python ${{ matrix.python-version }}
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.8"
+          - "3.9"
+          - "3.10"
+          - "3.11"
+
+    env:
+      TOXENV: "unit"
+      PYTEST_ADDOPTS: "-v --color=yes --csv test_results.csv"
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: isbang/compose-action@v1.5.1
+        with:
+          compose-file: "./docker-compose.yml"
+
+      - name: Install tox
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install tox
+
+      - name: Run tox for Spark session
+        run: tox -e integration-spark-session
+
+      - name: Run tox for Spark thrift
+        run: tox -e integration-spark-thrift
